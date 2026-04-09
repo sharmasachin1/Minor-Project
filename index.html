@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI Proctored Exam</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial;
+    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    color: white;
+}
+
+h1 {
+    text-align: center;
+    margin-top: 15px;
+}
+
+.main {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 20px;
+}
+
+/* LEFT */
+.exam {
+    width: 55%;
+}
+
+.question {
+    background: rgba(0,0,0,0.4);
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+
+textarea {
+    width: 100%;
+    height: 250px;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* RIGHT */
+.proctor {
+    width: 35%;
+    text-align: center;
+}
+
+video {
+    border-radius: 10px;
+    border: 3px solid white;
+}
+
+#status, #audioStatus {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.badge {
+    display: inline-block;
+    margin: 5px;
+    padding: 5px 8px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🧠 AI Proctored Coding Exam</h1>
+
+<div class="main">
+
+<!-- LEFT -->
+<div class="exam">
+    <div class="question">
+        <h3>Question:</h3>
+        <p>Write a program to find sum of two numbers.</p>
+    </div>
+
+    <textarea id="code" placeholder="Write your code..."></textarea>
+
+    <br><br>
+    <button onclick="submitCode()">Submit</button>
+</div>
+
+<!-- RIGHT -->
+<div class="proctor">
+    <video id="video" autoplay width="320"></video>
+
+    <div id="status">Video: Initializing...</div>
+    <div id="audioStatus">Audio: Listening...</div>
+
+    <div>
+        <span class="badge" id="faces">Faces: 0</span>
+        <span class="badge" id="yaw">Yaw: 0</span>
+        <span class="badge" id="objects">Objects: None</span>
+    </div>
+</div>
+
+</div>
+
+<script>
+const video = document.getElementById("video");
+const statusBox = document.getElementById("status");
+const audioBox = document.getElementById("audioStatus");
+
+const facesBox = document.getElementById("faces");
+const yawBox = document.getElementById("yaw");
+const objectsBox = document.getElementById("objects");
+
+// CAMERA START
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => video.srcObject = stream)
+.catch(() => alert("Camera denied"));
+
+// ================= VIDEO LOOP =================
+setInterval(captureFrame, 2000);
+
+function captureFrame() {
+    let canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    let ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+
+    canvas.toBlob(blob => {
+        let formData = new FormData();
+        formData.append("file", blob);
+
+        fetch("/analyze", {
+            method: "POST",
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+
+            facesBox.innerText = "Faces: " + data.faces;
+            yawBox.innerText = "Yaw: " + data.yaw;
+            objectsBox.innerText = "Objects: " + (data.objects.length ? data.objects.join(", ") : "None");
+
+            let txt = "All Good ✅";
+            let color = "green";
+
+            if (data.alerts.no_face) {
+                txt = "No Face ⚠️"; color = "orange";
+            } else if (data.alerts.multiple_faces) {
+                txt = "Multiple Faces 🚨"; color = "red";
+            } else if (data.alerts.looking_away) {
+                txt = "Looking Away ⚠️"; color = "orange";
+            } else if (data.alerts.object_detected) {
+                txt = "Object Detected 🚨"; color = "red";
+            }
+
+            statusBox.innerText = txt;
+            statusBox.style.background = color;
+        });
+    });
+}
+
+// ================= AUDIO LOOP =================
+setInterval(checkAudio, 3000);
+
+function checkAudio() {
+    fetch("/audio-status")
+    .then(res => res.json())
+    .then(data => {
+
+        let txt = "Audio Normal 🎙️";
+        let color = "green";
+
+        if (data.suspicious) {
+            txt = "Cheating Detected 🔴";
+
+            if (data.label === "whisper") {
+                txt += " (Whispering)";
+            }
+
+            if (data.keywords.length > 0) {
+                txt += " Keywords: " + data.keywords.join(", ");
+            }
+
+            color = "red";
+        }
+
+        audioBox.innerText = txt;
+        audioBox.style.background = color;
+    });
+}
+
+// ================= SUBMIT =================
+function submitCode() {
+    const code = document.getElementById("code").value;
+
+    fetch("/submit", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({code: code})
+    });
+
+    alert("Code Submitted ✅");
+}
+</script>
+
+</body>
+</html>
